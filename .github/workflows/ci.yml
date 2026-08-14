@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout source code
         uses: actions/checkout@v5
 
@@ -32,60 +33,124 @@ jobs:
 
       - name: Test Docker container
         run: |
+          set -e
+
+          echo "Starting test container..."
+
           docker run -d \
             --name test-container \
             -p 8080:8080 \
             my-first-cicd-project:1.0
 
-          sleep 10
+          echo "Waiting for Spring Boot application..."
 
-          curl --fail http://localhost:8080/
+          for i in {1..30}; do
+            if curl --silent --fail http://localhost:8080/ > /tmp/response.txt; then
+              echo "Application is ready!"
+              cat /tmp/response.txt
+              break
+            fi
 
+            echo "Waiting... attempt $i/30"
+            sleep 2
+
+            if [ "$i" -eq 30 ]; then
+              echo "Application failed to start."
+              echo "Docker container status:"
+              docker ps -a
+              echo "Docker logs:"
+              docker logs test-container
+              exit 1
+            fi
+          done
+
+          echo "Stopping test container..."
           docker stop test-container
+
+          echo "Removing test container..."
           docker rm test-container
+
+          echo "Docker test successful!"
 
   deploy:
     needs: build
+
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+
           script: |
             set -e
 
             cd ~/My-first-cicd-project
 
+            echo "====================================="
             echo "Pulling latest code..."
+            echo "====================================="
+
             git pull origin main
 
+            echo "====================================="
             echo "Building Spring Boot application..."
+            echo "====================================="
+
             mvn -B clean package
 
+            echo "====================================="
             echo "Building Docker image..."
+            echo "====================================="
+
             docker build -t my-first-cicd-project:1.0 .
 
+            echo "====================================="
             echo "Stopping old container..."
-            docker stop my-first-cicd-project || true
+            echo "====================================="
 
-            echo "Removing old container..."
+            docker stop my-first-cicd-project || true
             docker rm my-first-cicd-project || true
 
+            echo "====================================="
             echo "Starting new container..."
+            echo "====================================="
+
             docker run -d \
               --name my-first-cicd-project \
               -p 8080:8080 \
               my-first-cicd-project:1.0
 
+            echo "====================================="
             echo "Waiting for application..."
-            sleep 10
+            echo "====================================="
 
-            echo "Testing application..."
-            curl --fail http://localhost:8080/
+            for i in {1..30}; do
+              if curl --silent --fail http://localhost:8080/ > /tmp/response.txt; then
+                echo "Application is ready!"
+                cat /tmp/response.txt
+                break
+              fi
 
+              echo "Waiting... attempt $i/30"
+              sleep 2
+
+              if [ "$i" -eq 30 ]; then
+                echo "Application failed to start."
+                echo "Docker container status:"
+                docker ps -a
+                echo "Docker logs:"
+                docker logs my-first-cicd-project
+                exit 1
+              fi
+            done
+
+            echo "====================================="
             echo "Deployment successful!"
+            echo "====================================="
