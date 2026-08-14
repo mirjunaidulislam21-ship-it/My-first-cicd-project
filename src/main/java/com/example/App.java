@@ -15,6 +15,6 @@ public class App {
 
     @GetMapping("/")
     public String home() {
-        return "Hello from My-first-cicd-project! CI/CD pipeline is working.";
+        return "Hello from My-first-cicd-project! CI/CD pipeline is working perfectly.";
     }
 }
