@@ -9,6 +9,7 @@ on:
       - main
 
 jobs:
+
   build:
     runs-on: ubuntu-latest
 
@@ -30,7 +31,18 @@ jobs:
         run: docker build -t my-first-cicd-project:1.0 .
 
       - name: Test Docker container
-        run: docker run --rm my-first-cicd-project:1.0
+        run: |
+          docker run -d \
+            --name test-container \
+            -p 8080:8080 \
+            my-first-cicd-project:1.0
+
+          sleep 10
+
+          curl --fail http://localhost:8080/
+
+          docker stop test-container
+          docker rm test-container
 
   deploy:
     needs: build
@@ -45,10 +57,35 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -e
+
             cd ~/My-first-cicd-project
+
+            echo "Pulling latest code..."
             git pull origin main
+
+            echo "Building Spring Boot application..."
             mvn -B clean package
+
+            echo "Building Docker image..."
             docker build -t my-first-cicd-project:1.0 .
+
+            echo "Stopping old container..."
             docker stop my-first-cicd-project || true
+
+            echo "Removing old container..."
             docker rm my-first-cicd-project || true
-            docker run -d --name my-first-cicd-project my-first-cicd-project:1.0
+
+            echo "Starting new container..."
+            docker run -d \
+              --name my-first-cicd-project \
+              -p 8080:8080 \
+              my-first-cicd-project:1.0
+
+            echo "Waiting for application..."
+            sleep 10
+
+            echo "Testing application..."
+            curl --fail http://localhost:8080/
+
+            echo "Deployment successful!"
